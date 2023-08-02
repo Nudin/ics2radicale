@@ -13,6 +13,8 @@ from icalendar import Calendar, Event
 
 from cache import JSONCache
 
+APP_NAME = "ics2radicale"
+
 
 def event2Calendar(event: Event) -> Calendar:
     cal = Calendar()
@@ -202,19 +204,19 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
 def search_config_file():
     # Check XDG environment variables
     xdg_config_home = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config"))
-    xdg_config_file = xdg_config_home / "import_ics" / "config.toml"
+    xdg_config_file = xdg_config_home / APP_NAME / "config.toml"
     if xdg_config_file.exists():
         return xdg_config_file
 
     # Check home directory
     home_dir = Path.home()
-    home_config_file = home_dir / ".import_ics.toml"
+    home_config_file = home_dir / f".{APP_NAME}.toml"
     if home_config_file.exists():
         return home_config_file
 
     # Check working directory
     cwd = Path.cwd()
-    home_config_file = cwd / "import_ics" / "config.toml"
+    home_config_file = cwd / "config.toml"
     if home_config_file.exists():
         return home_config_file
 
@@ -223,7 +225,7 @@ def search_config_file():
 
 
 def main():
-    cache = JSONCache("import_ics")
+    cache = JSONCache(APP_NAME)
     try:
         with open(search_config_file(), "rb") as f:
             conf = tomllib.load(f)
