@@ -179,14 +179,18 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
 
         # Check if event is already present
         if filename.exists():
-            original_version = Event.from_ical(cache.get(uid))
-            existing = Calendar.from_ical(filename.read_text())
-            event = apply_merge_strategy(
-                strategy=strategy,
-                upstream=event,
-                existing=existing,
-                original_version=original_version,
-            )
+            try:
+                original_version = Event.from_ical(cache.get(uid))
+                existing = Calendar.from_ical(filename.read_text())
+                event = apply_merge_strategy(
+                    strategy=strategy,
+                    upstream=event,
+                    existing=existing,
+                    original_version=original_version,
+                )
+            except ValueError as e:
+                print("Warning: Could not apply merge strategy")
+                print(" Exception was: ", e)
             if event is None:
                 continue
 
