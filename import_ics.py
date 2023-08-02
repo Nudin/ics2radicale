@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import re
 import sys
 import tomllib
@@ -194,10 +195,33 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
             f.write(event2Calendar(event).to_ical())
 
 
+def search_config_file():
+    # Check XDG environment variables
+    xdg_config_home = Path(os.environ.get("XDG_CONFIG_HOME", "~/.config"))
+    xdg_config_file = xdg_config_home / "import_ics" / "config.toml"
+    if xdg_config_file.exists():
+        return xdg_config_file
+
+    # Check home directory
+    home_dir = Path.home()
+    home_config_file = home_dir / ".import_ics.toml"
+    if home_config_file.exists():
+        return home_config_file
+
+    # Check working directory
+    cwd = Path.cwd()
+    home_config_file = cwd / "import_ics" / "config.toml"
+    if home_config_file.exists():
+        return home_config_file
+
+    # If the configuration file is not found in any of the common locations
+    raise FileNotFoundError("Configuration could not be found")
+
+
 def main():
     cache = JSONCache("import_ics")
     try:
-        with open("config.toml", "rb") as f:
+        with open(search_config_file(), "rb") as f:
             conf = tomllib.load(f)
     except FileNotFoundError:
         print("No configuration found")
