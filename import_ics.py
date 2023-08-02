@@ -2,6 +2,7 @@
 import re
 import sys
 import tomllib
+from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -79,6 +80,9 @@ def merge_events(
     merged_event = Event()
     all_keys = set(base_event.keys()) | set(local.keys()) | set(upstream.keys())
     for prop in all_keys:
+        if prop == "LAST-MODIFIED":
+            merged_event.add("LAST-MODIFIED", datetime.now())
+            continue
         if local.get(prop) == upstream.get(prop) == base_event.get(prop):
             merged_event[prop] = base_event.get(prop)
         elif local.get(prop) == upstream.get(prop):
