@@ -165,6 +165,7 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
     req = requests.get(url=url, timeout=10)
     if req.status_code != 200:
         raise ConnectionError(req.status_code, req.text)
+    req.encoding = "UTF-8"  # FIXME (dirty fix for broken encoding by on server)
 
     calendar = Calendar.from_ical(req.text)
     for event in calendar.subcomponents:
