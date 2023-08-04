@@ -197,7 +197,8 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
     calendar = Calendar.from_ical(req.text)
     for event in calendar.subcomponents:
         if event.name != "VEVENT":
-            raise NotImplementedError("Component not implemented: " + event.name)
+            print(f"WARNING: Component not implemented: {event.name}, skipping")
+            continue
 
         uid = str(event["UID"])
         filename = folder / (uid + ".ics")
