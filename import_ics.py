@@ -165,7 +165,7 @@ def apply_merge_strategy(
 
 
 def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
-    remove_event = False
+    remove_event = None
     for test in filter_list.values():
         field = test.get("field", "SUMMARY")
         operator = test.get("operator", "==")
@@ -179,7 +179,8 @@ def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
             continue
         field_value = event[field]
         if apply_operator(value, field_value, operator):
-            if action == "remove":
+            # If there is a remove and a keep filter, the keep wins
+            if action == "remove" and remove_event is None:
                 remove_event = True
             elif action == "keep":
                 remove_event = False
