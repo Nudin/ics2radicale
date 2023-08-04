@@ -225,6 +225,11 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
             if event is None:
                 continue
 
+        # Hack: remove all carriage returns, since they break radicale
+        for field_name, field in event.items():
+            if isinstance(field, str):
+                event[field_name] = field.replace("\r", "")
+
         cache.set(uid, event.to_ical().decode())
         with open(filename, "wb") as f:
             f.write(event2Calendar(event).to_ical())
