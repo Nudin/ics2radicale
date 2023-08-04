@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 class JSONCache:
@@ -88,6 +88,8 @@ class JSONCache:
         Returns:
             Any: The value associated with the key, or the default value if the key is not found.
         """
+        if project_name not in self.projects:
+            return default
         self.load_cache(project_name)
         return self.data[project_name].get(key, default)
 
@@ -116,6 +118,13 @@ class JSONCache:
         if key in self.data[project_name]:
             del self.data[project_name][key]
             self.save_cache(project_name)
+
+    def __contains__(self, keys: Tuple[str, str]) -> bool:
+        project_name, key = keys
+        if project_name not in self.projects:
+            return False
+        self.load_cache(project_name)
+        return key in self.data[project_name]
 
     def clear(self, project_name: str) -> None:
         """
@@ -156,6 +165,9 @@ class JSONCache:
 
             def clear(self) -> None:
                 self.cache.clear(self.project_name)
+
+            def __contains__(self, key: str) -> bool:
+                return self.cache.__contains__((project_name, key))
 
         return SubCache(self, project_name)
 
