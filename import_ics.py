@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import json
 import os
 import re
 import sys
 import tomllib
+import uuid
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
@@ -20,6 +22,31 @@ def event2Calendar(event: Event) -> Calendar:
     cal = Calendar()
     cal.add_component(event)
     return cal
+
+
+def search_calendar(user_path, name):
+    for feed in user_path.iterdir():
+        if not feed.is_dir():
+            continue
+        props_file = feed / ".Radicale.props"
+        props = json.loads(props_file.read_text())
+        if props.get("D:displayname") == name:
+            return feed
+    return None
+
+
+def create_calendar(user_path, name):
+    cal_id = uuid.uuid4()
+    cal_path = user_path / str(cal_id)
+    props_file = cal_path / ".Radicale.props"
+    data = {
+        "C:supported-calendar-component-set": "VEVENT",
+        "D:displayname": name,
+        "tag": "VCALENDAR",
+    }
+    cal_path.mkdir(parents=True, exist_ok=True)
+    props_file.write_text(json.dumps(data))
+    return cal_path
 
 
 class MergeStrategy(Enum):
@@ -251,7 +278,21 @@ def main():
             )
             sys.exit(2)
         filter_list = p_config.get("filter", {})
-        folder = Path.home() / "collections/collection-root" / user / cal_id
+        user_folder = Path.home() / "collections/collection-root" / user
+        if cal_id == "auto":
+            folder = search_calendar(user_folder, project)
+            if folder is None:
+                print(f"Error: could not find calendar {project}")
+                print(
+                    "Hint: use cal_id='auto,create' to create new calendar or specify calendar id"
+                )
+                continue
+        elif cal_id == "auto,create":
+            folder = search_calendar(user_folder, project)
+            if folder is None:
+                folder = create_calendar(user_folder, project)
+        else:
+            folder = user_folder / cal_id
         project_cache = cache.get_subcache(project)
         process_cal(url, folder, strategy, filter_list, project_cache)
 
