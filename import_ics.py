@@ -145,20 +145,14 @@ def apply_merge_strategy(
     elif strategy == MergeStrategy.NEWER:
         existing = existing.subcomponents[0]
         newer = select_newer_event(existing, upstream)
-        if newer == existing:
-            return None
         return newer
     elif strategy == MergeStrategy.MERGE_UPSTREAM:
         existing = existing.subcomponents[0]
         merged = merge_events(original_version, existing, upstream, upstream)
-        if merged == existing:
-            return None
         return merged
     elif strategy == MergeStrategy.MERGE_OUR:
         existing = existing.subcomponents[0]
         merged = merge_events(original_version, existing, upstream, existing)
-        if merged == existing:
-            return None
         return merged
     else:
         raise NotImplementedError()
@@ -195,6 +189,48 @@ def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
     return event
 
 
+def process_event(event, folder, strategy, filter_list, cache):
+    uid = str(event["UID"])
+    filename = folder / (uid + ".ics")
+
+    # Apply filters
+    # TODO: decide if existing events should be removed if filtered?
+    event = filter_event(event, filter_list)
+    if event is None:
+        print("Remove event")
+        return
+
+    # Check if event is already present
+    if filename.exists():
+        try:
+            original_version = Event.from_ical(cache.get(uid))
+            existing = Calendar.from_ical(filename.read_text())
+            event = apply_merge_strategy(
+                strategy=strategy,
+                upstream=event,
+                existing=existing,
+                original_version=original_version,
+            )
+            if event == existing:
+                return  # no need to do anything
+        except ValueError as e:
+            print("Warning: Could not apply merge strategy")
+            print(" Exception was: ", e)
+        if event is None:
+            return
+    elif uid in cache:  # Event was deleted by user, skip it
+        return
+
+    # Hack: remove all carriage returns, since they break radicale
+    for field_name, field in event.items():
+        if isinstance(field, str):
+            event[field_name] = field.replace("\r", "")
+
+    cache.set(uid, event.to_ical().decode())
+    with open(filename, "wb") as f:
+        f.write(event2Calendar(event).to_ical())
+
+
 def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, cache):
     req = requests.get(url=url, timeout=10)
     if req.status_code != 200:
@@ -203,46 +239,11 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
 
     calendar = Calendar.from_ical(req.text)
     for event in calendar.subcomponents:
-        if event.name != "VEVENT":
+        if event.name == "VEVENT":
+            process_event(event, folder, strategy, filter_list, cache)
+        else:
             print(f"WARNING: Component not implemented: {event.name}, skipping")
             continue
-
-        uid = str(event["UID"])
-        filename = folder / (uid + ".ics")
-
-        # Apply filters
-        # TODO: decide if existing events should be removed if filtered?
-        event = filter_event(event, filter_list)
-        if event is None:
-            continue
-
-        # Check if event is already present
-        if filename.exists():
-            try:
-                original_version = Event.from_ical(cache.get(uid))
-                existing = Calendar.from_ical(filename.read_text())
-                event = apply_merge_strategy(
-                    strategy=strategy,
-                    upstream=event,
-                    existing=existing,
-                    original_version=original_version,
-                )
-            except ValueError as e:
-                print("Warning: Could not apply merge strategy")
-                print(" Exception was: ", e)
-            if event is None:
-                continue
-        elif uid in cache:  # Event was deleted by user, skip it
-            continue
-
-        # Hack: remove all carriage returns, since they break radicale
-        for field_name, field in event.items():
-            if isinstance(field, str):
-                event[field_name] = field.replace("\r", "")
-
-        cache.set(uid, event.to_ical().decode())
-        with open(filename, "wb") as f:
-            f.write(event2Calendar(event).to_ical())
 
 
 def search_config_file():
