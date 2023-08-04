@@ -184,9 +184,15 @@ def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
                 remove_event = True
             elif action == "keep":
                 remove_event = False
+            elif action == "set":
+                action_field = test["action_field"]
+                action_value = test["action_value"]
+                event[action_field] = action_value
             else:
                 raise ValueError("Unsupported action", action)
-    return remove_event
+    if remove_event:
+        return None
+    return event
 
 
 def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, cache):
@@ -206,7 +212,8 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
 
         # Apply filters
         # TODO: decide if existing events should be removed if filtered?
-        if filter_event(event, filter_list):
+        event = filter_event(event, filter_list)
+        if event is None:
             continue
 
         # Check if event is already present
