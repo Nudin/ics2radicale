@@ -224,6 +224,8 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
                 print(" Exception was: ", e)
             if event is None:
                 continue
+        elif uid in cache:  # Event was deleted by user, skip it
+            continue
 
         # Hack: remove all carriage returns, since they break radicale
         for field_name, field in event.items():
