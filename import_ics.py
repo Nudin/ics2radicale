@@ -49,27 +49,99 @@ def create_calendar(user_path, name):
     return cal_path
 
 
-class MergeStrategy(Enum):
+class Strategy(Enum):
     OUR = auto()
     UPSTREAM = auto()
     NEWER = auto()
     MERGE_OUR = auto()
     MERGE_UPSTREAM = auto()
 
-    @classmethod
-    def parse(cls, value: str):
+
+class MergeStrategy:
+    def __init__(self, value: str):
         value = value.lower().strip()
         if value == "our":
-            return cls.OUR
-        if value == "upstream":
-            return cls.UPSTREAM
-        if value == "newer":
-            return cls.NEWER
-        if value == "merge,our":
-            return cls.MERGE_OUR
-        if value == "merge,upstream":
-            return cls.MERGE_UPSTREAM
-        raise ValueError("No such merge strategy " + value)
+            self.strategy = Strategy.OUR
+        elif value == "upstream":
+            self.strategy = Strategy.UPSTREAM
+        elif value == "newer":
+            self.strategy = Strategy.NEWER
+        elif value == "merge,our":
+            self.strategy = Strategy.MERGE_OUR
+        elif value == "merge,upstream":
+            self.strategy = Strategy.MERGE_UPSTREAM
+        else:
+            raise ValueError("No such merge strategy " + value)
+
+    @staticmethod
+    def __select_newer_event__(our: Event, upstream: Event) -> Event:
+        if our["LAST-MODIFIED"] < upstream["LAST_MODIFIED"]:
+            return upstream
+        else:
+            return our
+
+    def __merge_events__(
+        self,
+        base_event: Event,
+        local: Event,
+        upstream: Event,
+    ):
+        merged_event = Event()
+        print("Location local:", local.get("LOCATION"))
+        print("Location upstream:", upstream.get("LOCATION"))
+        print("Location base:", base_event.get("LOCATION"))
+        all_keys = set(base_event.keys()) | set(local.keys()) | set(upstream.keys())
+        for prop in all_keys:
+            if prop == "LAST-MODIFIED":
+                merged_event.add("LAST-MODIFIED", datetime.now())
+                continue
+            if local.get(prop) == upstream.get(prop) == base_event.get(prop):
+                merged_event[prop] = base_event.get(prop)
+            elif local.get(prop) == upstream.get(prop):
+                merged_event[prop] = local.get(prop)
+            elif local.get(prop) == base_event.get(prop):
+                if prop in upstream:
+                    merged_event[prop] = upstream.get(prop)
+            elif upstream.get(prop) == base_event.get(prop):
+                if prop in local:
+                    merged_event[prop] = local.get(prop)
+            elif prop not in local:
+                merged_event[prop] = upstream.get(prop)
+            elif prop not in upstream:
+                merged_event[prop] = local.get(prop)
+            else:
+                # CONFLICT
+                if self.strategy == Strategy.MERGE_UPSTREAM:
+                    print("up", upstream.get(prop))
+                    merged_event[prop] = upstream.get(prop)
+                elif self.strategy == Strategy.MERGE_OUR:
+                    print("local", local.get(prop))
+                    merged_event[prop] = local.get(prop)
+                else:
+                    raise NotImplementedError
+        return merged_event
+
+    def apply(
+        self,
+        upstream: Event,
+        existing: Event,
+        original_version: Event,
+    ):
+        if self.strategy == Strategy.OUR:
+            return None
+        if self.strategy == Strategy.UPSTREAM:
+            return upstream
+        elif self.strategy == Strategy.NEWER:
+            newer = self.__select_newer_event__(existing, upstream)
+            return newer
+        elif self.strategy in [Strategy.MERGE_UPSTREAM, Strategy.MERGE_OUR]:
+            print(existing)
+            merged = self.__merge_events__(
+                base_event=original_version, local=existing, upstream=upstream
+            )
+            return merged
+        else:
+            raise NotImplementedError()
 
 
 def apply_operator(value1: Any, value2: Any, operator: str) -> bool:
@@ -95,67 +167,6 @@ def apply_operator(value1: Any, value2: Any, operator: str) -> bool:
         raise ValueError(  # pylint: disable=raise-missing-from
             "Cannot apply the operator to the given values."
         )
-
-
-def select_newer_event(our: Event, upstream: Event) -> Event:
-    if our["LAST-MODIFIED"] < upstream["LAST_MODIFIED"]:
-        return upstream
-    else:
-        return our
-
-
-def merge_events(
-    base_event: Event, local: Event, upstream: Event, preference: Optional[Event] = None
-):
-    merged_event = Event()
-    all_keys = set(base_event.keys()) | set(local.keys()) | set(upstream.keys())
-    for prop in all_keys:
-        if prop == "LAST-MODIFIED":
-            merged_event.add("LAST-MODIFIED", datetime.now())
-            continue
-        if local.get(prop) == upstream.get(prop) == base_event.get(prop):
-            merged_event[prop] = base_event.get(prop)
-        elif local.get(prop) == upstream.get(prop):
-            merged_event[prop] = local.get(prop)
-        elif local.get(prop) == base_event.get(prop):
-            if prop in upstream:
-                merged_event[prop] = upstream.get(prop)
-        elif upstream.get(prop) == base_event.get(prop):
-            if prop in local:
-                merged_event[prop] = local.get(prop)
-        elif prop not in local:
-            merged_event[prop] = upstream
-        elif prop not in upstream:
-            merged_event[prop] = local
-        else:
-            # CONFLICT
-            if preference is None:
-                raise ValueError("CONFLICT on merging event", base_event)
-            merged_event[prop] = preference.get(prop)
-    return merged_event
-
-
-def apply_merge_strategy(
-    strategy: MergeStrategy, upstream: Event, existing: Event, original_version: Event
-):
-    if strategy == MergeStrategy.OUR:
-        return None
-    if strategy == MergeStrategy.UPSTREAM:
-        return upstream
-    elif strategy == MergeStrategy.NEWER:
-        existing = existing.subcomponents[0]
-        newer = select_newer_event(existing, upstream)
-        return newer
-    elif strategy == MergeStrategy.MERGE_UPSTREAM:
-        existing = existing.subcomponents[0]
-        merged = merge_events(original_version, existing, upstream, upstream)
-        return merged
-    elif strategy == MergeStrategy.MERGE_OUR:
-        existing = existing.subcomponents[0]
-        merged = merge_events(original_version, existing, upstream, existing)
-        return merged
-    else:
-        raise NotImplementedError()
 
 
 def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
@@ -204,9 +215,8 @@ def process_event(event, folder, strategy, filter_list, cache):
     if filename.exists():
         try:
             original_version = Event.from_ical(cache.get(uid))
-            existing = Calendar.from_ical(filename.read_text())
-            event = apply_merge_strategy(
-                strategy=strategy,
+            existing = Calendar.from_ical(filename.read_text()).subcomponents[0]
+            event = strategy.apply(
                 upstream=event,
                 existing=existing,
                 original_version=original_version,
@@ -288,7 +298,7 @@ def main():
         try:
             url = p_config["url"]
             cal_id = p_config["cal_id"]
-            strategy = MergeStrategy.parse(p_config["strategy"])
+            strategy = MergeStrategy(p_config["strategy"])
         except KeyError as e:
             print(
                 f'Invalid configuration, missing paramerter "{e.args[0]}" for project "{project}"'

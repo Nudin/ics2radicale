@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 from icalendar import Event, vCalAddress, vText
-from import_ics import merge_events
+
+from import_ics import MergeStrategy
 
 
 def create_demo_event():
@@ -43,13 +44,16 @@ def create_demo_event():
 
 
 base_event = create_demo_event()
+strategy = MergeStrategy("merge,our")
+strategy_prefer_upstream = MergeStrategy("merge,upstream")
 
 
 def test_merge_three_way_no_changes():
     local_event = deepcopy(base_event)
     remote_event = deepcopy(base_event)
 
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event == base_event
     assert merged_event == local_event
     assert merged_event == remote_event
@@ -60,7 +64,8 @@ def test_merge_three_way_only_local_changed():
     remote_event = deepcopy(base_event)
 
     local_event["SUMMARY"] = "Altered"
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event == local_event
     assert merged_event != remote_event
@@ -73,7 +78,8 @@ def test_merge_three_way_local_and_remote_changed_identically():
 
     local_event["SUMMARY"] = "Altered"
     remote_event["SUMMARY"] = "Altered"
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event == local_event
     assert merged_event == remote_event
@@ -85,7 +91,8 @@ def test_merge_three_way_only_remote_changed():
     remote_event = deepcopy(base_event)
 
     remote_event["SUMMARY"] = "Altered"
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event != local_event
     assert merged_event == remote_event
@@ -98,7 +105,8 @@ def test_merge_three_way_different_fields_changed():
 
     local_event["LOCATION"] = "Berlin"
     remote_event["SUMMARY"] = "Altered"
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event != local_event
     assert merged_event != remote_event
@@ -114,12 +122,9 @@ def test_merge_three_way_with_conflict():
     local_event["LOCATION"] = "Berlin"
     remote_event["LOCATION"] = "New York"
 
-    # Exception without a preference defined
-    with pytest.raises(ValueError):
-        merge_events(base_event, remote_event, local_event)
-
     # Use the local_event preference value
-    merged_event = merge_events(base_event, remote_event, local_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event != local_event
     assert merged_event != remote_event
@@ -127,7 +132,8 @@ def test_merge_three_way_with_conflict():
     assert merged_event["LOCATION"] == "Berlin"
 
     # Use the remote_event preference value
-    merged_event = merge_events(base_event, remote_event, local_event, remote_event)
+    merged_event = strategy_prefer_upstream.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event != local_event
     assert merged_event != remote_event
@@ -141,7 +147,8 @@ def test_merge_three_way_new_fields():
 
     local_event["NEW"] = "NEW"
     remote_event["NEW2"] = "NEW2"
-    merged_event = merge_events(base_event, remote_event, local_event)
+    merged_event = strategy.apply(remote_event, local_event, base_event)
+    assert merged_event is not None
     assert merged_event != base_event
     assert merged_event != local_event
     assert merged_event != remote_event
