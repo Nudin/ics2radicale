@@ -3,8 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from icalendar import Event, vCalAddress, vText
-
-from import_ics import MergeStrategy
+from ics2radicale.import_ics import MergeStrategy
 
 
 def create_demo_event():
