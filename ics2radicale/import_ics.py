@@ -183,33 +183,45 @@ def search_config_file():
     raise FileNotFoundError("Configuration could not be found")
 
 
+class Config:
+    def __init__(self):
+        try:
+            with open(search_config_file(), "rb") as f:
+                self.conf = tomllib.load(f)
+        except FileNotFoundError:
+            print("No configuration found")
+            sys.exit(1)
+        try:
+            self.user = self.conf["user"]
+        except KeyError as e:
+            print(f'Invalid configuration, missing paramerter "{e.args[0]}"')
+            sys.exit(2)
+
+        self.projects = {}
+        for project, p_config in self.conf.items():
+            if project == "user":
+                continue
+            try:
+                self.projects[project] = p_config
+                _ = p_config["url"]
+                _ = p_config["cal_id"]
+                self.projects[project]["strategy"] = MergeStrategy(p_config["strategy"])
+            except KeyError as e:
+                print(
+                    f'Invalid configuration, missing paramerter "{e.args[0]}" for project "{project}"'
+                )
+                sys.exit(2)
+
+
 def main():
     cache = JSONCache(APP_NAME)
-    try:
-        with open(search_config_file(), "rb") as f:
-            conf = tomllib.load(f)
-    except FileNotFoundError:
-        print("No configuration found")
-        sys.exit(1)
-    try:
-        user = conf["user"]
-    except KeyError as e:
-        print(f'Invalid configuration, missing paramerter "{e.args[0]}"')
-        sys.exit(2)
-    for project, p_config in conf.items():
-        if project == "user":
-            continue
-        try:
-            url = p_config["url"]
-            cal_id = p_config["cal_id"]
-            strategy = MergeStrategy(p_config["strategy"])
-        except KeyError as e:
-            print(
-                f'Invalid configuration, missing paramerter "{e.args[0]}" for project "{project}"'
-            )
-            sys.exit(2)
+    conf = Config()
+    for project, p_config in conf.projects.items():
+        url = p_config["url"]
+        cal_id = p_config["cal_id"]
         filter_list = p_config.get("filter", {})
-        user_folder = Path.home() / "collections/collection-root" / user
+        user_folder = Path.home() / "collections/collection-root" / conf.user
+        strategy = p_config["strategy"]
         if cal_id == "auto":
             folder = search_calendar(user_folder, project)
             if folder is None:
