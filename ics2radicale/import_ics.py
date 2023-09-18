@@ -104,8 +104,14 @@ def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
     return event
 
 
-def process_event(event, folder, strategy, filter_list, cache):
+def process_event(event, folder, strategy, filter_list, cache, fix_uid=False):
     uid = str(event["UID"])
+    summary = str(event.get("SUMMARY", ""))
+    if fix_uid:
+        stripped_summary = re.sub(r"[^a-zA-Z0-9_-]", "_", summary)[:55]
+        uid = event["DTSTART"].to_ical().decode() + stripped_summary
+        event["UID"] = uid
+
     filename = folder / (uid + ".ics")
 
     # Apply filters
@@ -145,7 +151,9 @@ def process_event(event, folder, strategy, filter_list, cache):
         f.write(event2Calendar(event).to_ical())
 
 
-def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, cache):
+def process_cal(
+    url: str, folder: Path, strategy: MergeStrategy, filter_list, cache, fix_uid=None
+):
     req = requests.get(url=url, timeout=10)
     if req.status_code != 200:
         raise ConnectionError(req.status_code, req.text)
@@ -154,7 +162,7 @@ def process_cal(url: str, folder: Path, strategy: MergeStrategy, filter_list, ca
     calendar = Calendar.from_ical(req.text)
     for event in calendar.subcomponents:
         if event.name == "VEVENT":
-            process_event(event, folder, strategy, filter_list, cache)
+            process_event(event, folder, strategy, filter_list, cache, fix_uid=fix_uid)
         else:
             print(f"WARNING: Component not implemented: {event.name}, skipping")
             continue
@@ -222,6 +230,7 @@ def main():
         filter_list = p_config.get("filter", {})
         user_folder = Path.home() / "collections/collection-root" / conf.user
         strategy = p_config["strategy"]
+        fix_uid = p_config.get("fix_uid", False)
         if cal_id == "auto":
             folder = search_calendar(user_folder, project)
             if folder is None:
@@ -237,7 +246,7 @@ def main():
         else:
             folder = user_folder / cal_id
         project_cache = cache.get_subcache(project)
-        process_cal(url, folder, strategy, filter_list, project_cache)
+        process_cal(url, folder, strategy, filter_list, project_cache, fix_uid)
 
 
 if __name__ == "__main__":
