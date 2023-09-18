@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+
+.coverage
+.ropeproject
+poetry.lock
+
+*.ics

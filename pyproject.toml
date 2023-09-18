@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "ics2radicale"
+version = "0.1.0"
+description = "Import (and update) an icalendar file to radicale"
+authors = ["Michael F. Schönitzer <michael@schoenitzer.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31.0"
+icalendar = "^5.0.7"
+
+[tool.poetry.scripts]
+ics2radicale = "ics2radicale.import_ics:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+coverage = {extras = ["toml"], version = "^7.3.0"}
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
