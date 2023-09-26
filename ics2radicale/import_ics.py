@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import logging
 import os
 import re
 import sys
@@ -107,6 +108,7 @@ def filter_event(event: Event, filter_list: Dict[str, Dict[str, str]]):
 def process_event(event, folder, strategy, filter_list, cache, fix_uid=False):
     uid = str(event["UID"])
     summary = str(event.get("SUMMARY", ""))
+    logging.debug(f"Processing event {uid} ({summary})")
     if fix_uid:
         stripped_summary = re.sub(r"[^a-zA-Z0-9_-]", "_", summary)[:55]
         uid = event["DTSTART"].to_ical().decode() + stripped_summary
@@ -118,7 +120,7 @@ def process_event(event, folder, strategy, filter_list, cache, fix_uid=False):
     # TODO: decide if existing events should be removed if filtered?
     event = filter_event(event, filter_list)
     if event is None:
-        print("Remove event")
+        logging.info("Remove event")
         return
 
     # Check if event is already present
@@ -134,8 +136,8 @@ def process_event(event, folder, strategy, filter_list, cache, fix_uid=False):
             if event == existing:
                 return  # no need to do anything
         except ValueError as e:
-            print("Warning: Could not apply merge strategy")
-            print(" Exception was: ", e)
+            logging.warning("Warning: Could not apply merge strategy")
+            logging.warning(" Exception was: %s", e)
         if event is None:
             return
     elif uid in cache:  # Event was deleted by user, skip it
@@ -154,6 +156,7 @@ def process_event(event, folder, strategy, filter_list, cache, fix_uid=False):
 def process_cal(
     url: str, folder: Path, strategy: MergeStrategy, filter_list, cache, fix_uid=None
 ):
+    logging.info(f"Processing {url}")
     req = requests.get(url=url, timeout=10)
     if req.status_code != 200:
         raise ConnectionError(req.status_code, req.text)
@@ -164,7 +167,9 @@ def process_cal(
         if event.name == "VEVENT":
             process_event(event, folder, strategy, filter_list, cache, fix_uid=fix_uid)
         else:
-            print(f"WARNING: Component not implemented: {event.name}, skipping")
+            logging.warning(
+                f"WARNING: Component not implemented: {event.name}, skipping"
+            )
             continue
 
 
@@ -197,17 +202,17 @@ class Config:
             with open(search_config_file(), "rb") as f:
                 self.conf = tomllib.load(f)
         except FileNotFoundError:
-            print("No configuration found")
+            logging.critical("No configuration found")
             sys.exit(1)
         try:
             self.user = self.conf["user"]
         except KeyError as e:
-            print(f'Invalid configuration, missing paramerter "{e.args[0]}"')
+            logging.critical(f'Invalid configuration, missing paramerter "{e.args[0]}"')
             sys.exit(2)
 
         self.projects = {}
         for project, p_config in self.conf.items():
-            if project == "user":
+            if not isinstance(p_config, dict):
                 continue
             try:
                 self.projects[project] = p_config
@@ -215,15 +220,21 @@ class Config:
                 _ = p_config["cal_id"]
                 self.projects[project]["strategy"] = MergeStrategy(p_config["strategy"])
             except KeyError as e:
-                print(
+                logging.critical(
                     f'Invalid configuration, missing paramerter "{e.args[0]}" for project "{project}"'
                 )
                 sys.exit(2)
+
+    def get(self, key, default=None):
+        return self.conf.get(key, default)
 
 
 def main():
     cache = JSONCache(APP_NAME)
     conf = Config()
+    logFile = conf.get("logfile", f"{APP_NAME}.log")
+    logLevel = logging.getLevelName(conf.get("loglevel", "INFO"))
+    logging.basicConfig(filename=logFile, level=logLevel)
     for project, p_config in conf.projects.items():
         url = p_config["url"]
         cal_id = p_config["cal_id"]
@@ -234,8 +245,8 @@ def main():
         if cal_id == "auto":
             folder = search_calendar(user_folder, project)
             if folder is None:
-                print(f"Error: could not find calendar {project}")
-                print(
+                logging.error(f"Error: could not find calendar {project}")
+                logging.error(
                     "Hint: use cal_id='auto,create' to create new calendar or specify calendar id"
                 )
                 continue

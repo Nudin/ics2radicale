@@ -1,8 +1,21 @@
+import logging
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional
 
+import icalendar
 from icalendar import Event
+
+
+def _to_string(elemtent):
+    if isinstance(elemtent, icalendar.prop.vDDDTypes):
+        return str(elemtent.dt)
+    elif isinstance(elemtent, icalendar.prop.vCategory):
+        return str([str(e) for e in elemtent.cats])
+    elif isinstance(elemtent, icalendar.cal.Event):
+        return str({x: _to_string(y) for x, y in elemtent.items()})
+    else:
+        return str(elemtent)
 
 
 class Strategy(Enum):
@@ -43,9 +56,9 @@ class MergeStrategy:
         upstream: Event,
     ):
         merged_event = Event()
-        print("Location local:", local.get("LOCATION"))
-        print("Location upstream:", upstream.get("LOCATION"))
-        print("Location base:", base_event.get("LOCATION"))
+        logging.info(
+            f"Merging event {local.get('summary')} and {upstream.get('summary')}"
+        )
         all_keys = set(base_event.keys()) | set(local.keys()) | set(upstream.keys())
         for prop in all_keys:
             if prop == "LAST-MODIFIED":
@@ -68,10 +81,24 @@ class MergeStrategy:
             else:
                 # CONFLICT
                 if self.strategy == Strategy.MERGE_UPSTREAM:
-                    print("up", upstream.get(prop))
+                    logging.info(
+                        "Conflict, use upstream %s=%s",
+                        prop,
+                        _to_string(upstream.get(prop)),
+                    )
+                    logging.debug(
+                        "Overwriting old value %s=%s", prop, _to_string(local.get(prop))
+                    )
                     merged_event[prop] = upstream.get(prop)
                 elif self.strategy == Strategy.MERGE_OUR:
-                    print("local", local.get(prop))
+                    logging.info(
+                        "Conflict, use local %s=%s", prop, _to_string(local.get(prop))
+                    )
+                    logging.debug(
+                        "Ignoring upstream value %s=%s",
+                        prop,
+                        _to_string(upstream.get(prop)),
+                    )
                     merged_event[prop] = local.get(prop)
                 else:
                     raise NotImplementedError
@@ -91,7 +118,6 @@ class MergeStrategy:
             newer = self.__select_newer_event__(existing, upstream)
             return newer
         elif self.strategy in [Strategy.MERGE_UPSTREAM, Strategy.MERGE_OUR]:
-            print(existing)
             merged = self.__merge_events__(
                 base_event=original_version, local=existing, upstream=upstream
             )
