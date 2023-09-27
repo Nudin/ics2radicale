@@ -60,6 +60,8 @@ class MergeStrategy:
         local: Event,
         upstream: Event,
     ):
+        if unpack_value(base_event) == unpack_value(local) == unpack_value(upstream):
+            return base_event
         merged_event = Event()
         logging.info(
             f"Merging event {local.get('summary')} and {upstream.get('summary')}"
