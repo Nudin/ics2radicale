@@ -7,15 +7,20 @@ import icalendar
 from icalendar import Event
 
 
-def _to_string(elemtent):
+def unpack_value(elemtent):
     if isinstance(elemtent, icalendar.prop.vDDDTypes):
-        return str(elemtent.dt)
+        return elemtent.dt
     elif isinstance(elemtent, icalendar.prop.vCategory):
-        return str([str(e) for e in elemtent.cats])
+        return [str(e) for e in elemtent.cats]
     elif isinstance(elemtent, icalendar.cal.Event):
-        return str({x: _to_string(y) for x, y in elemtent.items()})
-    else:
+        return {x: unpack_value(y) for x, y in elemtent.items()}
+    elif isinstance(elemtent, icalendar.prop.vText):
         return str(elemtent)
+    elif type(elemtent).__module__.split(".")[0] == "icalendar":
+        logging.debug("Element type not properly implemented: %s", type(elemtent))
+        return elemtent.to_ical()
+    else:
+        return elemtent
 
 
 class Strategy(Enum):
@@ -64,42 +69,44 @@ class MergeStrategy:
             if prop == "LAST-MODIFIED":
                 merged_event.add("LAST-MODIFIED", datetime.now())
                 continue
-            if local.get(prop) == upstream.get(prop) == base_event.get(prop):
-                merged_event[prop] = base_event.get(prop)
-            elif local.get(prop) == upstream.get(prop):
-                merged_event[prop] = local.get(prop)
-            elif local.get(prop) == base_event.get(prop):
+            local_prop = local.get(prop)
+            local_val = unpack_value(local_prop)
+            upstream_prop = upstream.get(prop)
+            upstream_val = unpack_value(upstream_prop)
+            base_prop = base_event.get(prop)
+            base_val = unpack_value(base_prop)
+            if local_val == upstream_val == base_val:
+                merged_event[prop] = base_prop
+            elif local_val == upstream_val:
+                merged_event[prop] = local_prop
+            elif local_val == base_val:
                 if prop in upstream:
-                    merged_event[prop] = upstream.get(prop)
-            elif upstream.get(prop) == base_event.get(prop):
+                    merged_event[prop] = upstream_prop
+            elif upstream_val == base_val:
                 if prop in local:
-                    merged_event[prop] = local.get(prop)
+                    merged_event[prop] = local_prop
             elif prop not in local:
-                merged_event[prop] = upstream.get(prop)
+                merged_event[prop] = upstream_prop
             elif prop not in upstream:
-                merged_event[prop] = local.get(prop)
+                merged_event[prop] = local_prop
             else:
                 # CONFLICT
                 if self.strategy == Strategy.MERGE_UPSTREAM:
                     logging.info(
                         "Conflict, use upstream %s=%s",
                         prop,
-                        _to_string(upstream.get(prop)),
+                        upstream_val,
                     )
-                    logging.debug(
-                        "Overwriting old value %s=%s", prop, _to_string(local.get(prop))
-                    )
-                    merged_event[prop] = upstream.get(prop)
+                    logging.debug("Overwriting old value %s=%s", prop, local_val)
+                    merged_event[prop] = upstream_prop
                 elif self.strategy == Strategy.MERGE_OUR:
-                    logging.info(
-                        "Conflict, use local %s=%s", prop, _to_string(local.get(prop))
-                    )
+                    logging.info("Conflict, use local %s=%s", prop, local_val)
                     logging.debug(
                         "Ignoring upstream value %s=%s",
                         prop,
-                        _to_string(upstream.get(prop)),
+                        upstream_val,
                     )
-                    merged_event[prop] = local.get(prop)
+                    merged_event[prop] = local_prop
                 else:
                     raise NotImplementedError
         return merged_event
